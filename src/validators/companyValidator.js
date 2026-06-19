@@ -1,9 +1,9 @@
 const { z } = require("zod");
 
 const companySignupSchema = z.object({
-  companyName: z.string().min(2),
-  email: z.email(),
-  password: z.string().min(6)
+  companyName: z.string().min(2, "Company name required"),
+  email: z.email("Invalid email"),
+  password: z.string().min(6, "Password must be at least 6 characters")
 });
 
 module.exports = {

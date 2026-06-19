@@ -1,0 +1,82 @@
+const pool = require("../config/db");
+
+const {
+  createJobSchema
+} = require("../validators/jobValidator");
+
+const createJob = async (req, res) => {
+  try {
+
+    const validation =
+      createJobSchema.safeParse(req.body);
+
+    if (!validation.success) {
+      return res.status(400).json({
+        success: false,
+        errors: validation.error.issues
+      });
+    }
+
+    const {
+      companyId,
+      title,
+      description,
+      requiredCompetencyIds,
+      location,
+      salary
+    } = req.body;
+
+    const company = await pool.query(
+      "SELECT * FROM companies WHERE id = $1",
+      [companyId]
+    );
+
+    if (company.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Company not found"
+      });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO jobs
+      (
+        company_id,
+        title,
+        description,
+        required_competency_ids,
+        location,
+        salary
+      )
+      VALUES ($1,$2,$3,$4,$5,$6)
+      RETURNING *
+      `,
+      [
+        companyId,
+        title,
+        description,
+        JSON.stringify(requiredCompetencyIds),
+        location,
+        salary
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      job: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+module.exports = {
+  createJob
+};
