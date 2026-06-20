@@ -6,7 +6,6 @@ const {
 
 const applyJob = async (req, res) => {
   try {
-
     // Zod Validation
     const validation =
       applicationSchema.safeParse(req.body);
@@ -64,16 +63,30 @@ const applyJob = async (req, res) => {
     }
 
     const candidateSkills =
-      candidateResult.rows[0].skills || [];
+  candidateResult.rows[0].skills || [];
 
-    const requiredSkills =
-      jobResult.rows[0].required_competency_ids || [];
+const skillThresholds =
+  jobResult.rows[0].skillthresholds || [];
 
-    // Threshold Check
-    const meetsThreshold =
-      requiredSkills.every(skill =>
-        candidateSkills.includes(skill)
+const meetsThreshold =
+  skillThresholds.every(requiredSkill => {
+
+    const candidateSkill =
+      candidateSkills.find(
+        skill =>
+          skill.competencyId ===
+          requiredSkill.competencyId
       );
+
+    if (!candidateSkill) {
+      return false;
+    }
+
+    return (
+      candidateSkill.level >=
+      requiredSkill.minimumLevel
+    );
+  });
 
     const status = meetsThreshold
       ? "APPLIED"

@@ -7,6 +7,7 @@ const {
 const createJob = async (req, res) => {
   try {
 
+    // Validation
     const validation =
       createJobSchema.safeParse(req.body);
 
@@ -23,9 +24,11 @@ const createJob = async (req, res) => {
       description,
       requiredCompetencyIds,
       location,
-      salary
+      salary,
+      skillThresholds
     } = req.body;
 
+    // Check Company Exists
     const company = await pool.query(
       "SELECT * FROM companies WHERE id = $1",
       [companyId]
@@ -38,6 +41,7 @@ const createJob = async (req, res) => {
       });
     }
 
+    // Create Job
     const result = await pool.query(
       `
       INSERT INTO jobs
@@ -47,9 +51,10 @@ const createJob = async (req, res) => {
         description,
         required_competency_ids,
         location,
-        salary
+        salary,
+        skill_thresholds
       )
-      VALUES ($1,$2,$3,$4,$5,$6)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
       RETURNING *
       `,
       [
@@ -58,13 +63,32 @@ const createJob = async (req, res) => {
         description,
         JSON.stringify(requiredCompetencyIds),
         location,
-        salary
+        salary,
+        JSON.stringify(skillThresholds)
       ]
     );
 
+    const job = result.rows[0];
+
+    // Generate Assessment Link
+    const assessmentLink =
+      `https://placemux.com/assessment/${job.id}`;
+
+    await pool.query(
+      `
+      UPDATE jobs
+      SET assessment_link = $1
+      WHERE id = $2
+      `,
+      [assessmentLink, job.id]
+    );
+
+    job.assessment_link = assessmentLink;
+
     res.status(201).json({
       success: true,
-      job: result.rows[0]
+      message: "Job created successfully",
+      job
     });
 
   } catch (error) {
