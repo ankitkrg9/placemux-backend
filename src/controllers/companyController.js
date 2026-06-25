@@ -223,73 +223,77 @@ const submitKYC = async (req, res) => {
       });
     }
 
-    const existingKyc = await pool.query(
-      `
-      SELECT *
-      FROM company_kyc
-      WHERE company_id = $1
-      `,
-      [companyId]
-    );
+    const responseData = await pool.withTransaction(async (client) => {
+      const existingKyc = await client.query(
+        `
+        SELECT *
+        FROM company_kyc
+        WHERE company_id = $1
+        `,
+        [companyId]
+      );
 
-    if (existingKyc.rows.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: "KYC already submitted"
-      });
-    }
+      if (existingKyc.rows.length > 0) {
+        const error = new Error("KYC already submitted");
+        error.status = 400;
+        throw error;
+      }
 
-    const result = await pool.query(
-      `
-      INSERT INTO company_kyc
-      (
-        company_id,
-        pan_number,
-        gst_number,
-        document_url
-      )
-      VALUES ($1,$2,$3,$4)
-      RETURNING *
-      `,
-      [
-        companyId,
-        panNumber,
-        gstNumber,
-        documentUrl
-      ]
-    );
+      const result = await client.query(
+        `
+        INSERT INTO company_kyc
+        (
+          company_id,
+          pan_number,
+          gst_number,
+          document_url
+        )
+        VALUES ($1,$2,$3,$4)
+        RETURNING *
+        `,
+        [
+          companyId,
+          panNumber,
+          gstNumber,
+          documentUrl
+        ]
+      );
 
-    const responseData = {
-      success: true,
-      message: "KYC submitted successfully",
-      kyc: result.rows[0]
-    };
+      const responseData = {
+        success: true,
+        message: "KYC submitted successfully",
+        kyc: result.rows[0]
+      };
 
-    await pool.query(
-      `
-      INSERT INTO idempotency_keys
-      (
-        key,
-        endpoint,
-        response
-      )
-      VALUES ($1,$2,$3)
-      `,
-      [
-        idempotencyKey,
-        "/api/company/kyc",
-        JSON.stringify(responseData)
-      ]
-    );
+      await client.query(
+        `
+        INSERT INTO idempotency_keys
+        (
+          key,
+          endpoint,
+          response
+        )
+        VALUES ($1,$2,$3)
+        `,
+        [
+          idempotencyKey,
+          "/api/company/kyc",
+          JSON.stringify(responseData)
+        ]
+      );
+
+      return responseData;
+    });
 
     res.status(201).json(responseData);
 
   } catch (error) {
     console.error(error);
+    const dbError = pool.mapDbError(error);
 
-    res.status(500).json({
+    res.status(dbError.status).json({
       success: false,
-      message: error.message
+      message: dbError.message
     });
   }
 };

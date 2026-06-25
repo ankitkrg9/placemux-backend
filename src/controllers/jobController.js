@@ -70,20 +70,50 @@ const createJob = async (req, res) => {
 
     const job = result.rows[0];
 
-    // Generate Assessment Link
-    const assessmentLink =
-      `https://placemux.com/assessment/${job.id}`;
+    // Create job and assessment link in a single transaction
+    const job = await pool.withTransaction(async (client) => {
+      const result = await client.query(
+        `
+        INSERT INTO jobs
+        (
+          company_id,
+          title,
+          description,
+          required_competency_ids,
+          location,
+          salary,
+          skill_thresholds
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        RETURNING *
+        `,
+        [
+          companyId,
+          title,
+          description,
+          JSON.stringify(requiredCompetencyIds),
+          location,
+          salary,
+          JSON.stringify(skillThresholds)
+        ]
+      );
 
-    await pool.query(
-      `
-      UPDATE jobs
-      SET assessment_link = $1
-      WHERE id = $2
-      `,
-      [assessmentLink, job.id]
-    );
+      const createdJob = result.rows[0];
+      const assessmentLink =
+        `https://placemux.com/assessment/${createdJob.id}`;
 
-    job.assessment_link = assessmentLink;
+      await client.query(
+        `
+        UPDATE jobs
+        SET assessment_link = $1
+        WHERE id = $2
+        `,
+        [assessmentLink, createdJob.id]
+      );
+
+      createdJob.assessment_link = assessmentLink;
+      return createdJob;
+    });
 
     res.status(201).json({
       success: true,
@@ -93,10 +123,11 @@ const createJob = async (req, res) => {
 
   } catch (error) {
     console.error(error);
+    const dbError = pool.mapDbError(error);
 
-    res.status(500).json({
+    res.status(dbError.status).json({
       success: false,
-      message: error.message
+      message: dbError.message
     });
   }
 };

@@ -44,71 +44,72 @@ const applyJob = async (req, res) => {
       });
     }
 
-    // Duplicate Application Check
-    const existingApplication = await pool.query(
-      `
-      SELECT *
-      FROM applications
-      WHERE candidate_id = $1
-      AND job_id = $2
-      `,
-      [candidateId, jobId]
-    );
-
-    if (existingApplication.rows.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Candidate has already applied for this job"
-      });
-    }
-
     const candidateSkills =
-  candidateResult.rows[0].skills || [];
+      candidateResult.rows[0].skills || [];
 
-const skillThresholds =
-  jobResult.rows[0].skillthresholds || [];
+    const skillThresholds =
+      jobResult.rows[0].skillthresholds || [];
 
-const meetsThreshold =
-  skillThresholds.every(requiredSkill => {
+    const meetsThreshold =
+      skillThresholds.every(requiredSkill => {
+        const candidateSkill =
+          candidateSkills.find(
+            skill =>
+              skill.competencyId ===
+              requiredSkill.competencyId
+          );
 
-    const candidateSkill =
-      candidateSkills.find(
-        skill =>
-          skill.competencyId ===
-          requiredSkill.competencyId
-      );
+        if (!candidateSkill) {
+          return false;
+        }
 
-    if (!candidateSkill) {
-      return false;
-    }
-
-    return (
-      candidateSkill.level >=
-      requiredSkill.minimumLevel
-    );
-  });
+        return (
+          candidateSkill.level >=
+          requiredSkill.minimumLevel
+        );
+      });
 
     const status = meetsThreshold
       ? "APPLIED"
       : "REJECTED_THRESHOLD";
 
-    const result = await pool.query(
-      `
-      INSERT INTO applications
-      (
-        job_id,
-        candidate_id,
-        status
-      )
-      VALUES ($1,$2,$3)
-      RETURNING *
-      `,
-      [
-        jobId,
-        candidateId,
-        status
-      ]
-    );
+    const result = await pool.withTransaction(async (client) => {
+      const existingApplication = await client.query(
+        `
+        SELECT *
+        FROM applications
+        WHERE candidate_id = $1
+        AND job_id = $2
+        `,
+        [candidateId, jobId]
+      );
+
+      if (existingApplication.rows.length > 0) {
+        const error = new Error(
+          "Candidate has already applied for this job"
+        );
+        error.status = 400;
+        throw error;
+      }
+
+      return client.query(
+        `
+        INSERT INTO applications
+        (
+          job_id,
+          candidate_id,
+          status
+        )
+        VALUES ($1,$2,$3)
+        RETURNING *
+        `,
+        [
+          jobId,
+          candidateId,
+          status
+        ]
+      );
+    });
 
     res.status(201).json({
       success: true,
@@ -121,10 +122,11 @@ const meetsThreshold =
 
   } catch (error) {
     console.error(error);
+    const dbError = pool.mapDbError(error);
 
-    res.status(500).json({
+    res.status(dbError.status).json({
       success: false,
-      message: error.message
+      message: dbError.message
     });
   }
 };
