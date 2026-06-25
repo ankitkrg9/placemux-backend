@@ -7,6 +7,15 @@ const {
 const createJob = async (req, res) => {
   try {
 
+    const companyId = req.user?.companyId;
+
+    if (!companyId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized"
+      });
+    }
+
     // Validation
     const validation =
       createJobSchema.safeParse(req.body);
@@ -19,7 +28,6 @@ const createJob = async (req, res) => {
     }
 
     const {
-      companyId,
       title,
       description,
       requiredCompetencyIds,
@@ -28,7 +36,6 @@ const createJob = async (req, res) => {
       skillThresholds
     } = req.body;
 
-    // Check Company Exists
     const company = await pool.query(
       "SELECT * FROM companies WHERE id = $1",
       [companyId]
@@ -40,35 +47,6 @@ const createJob = async (req, res) => {
         message: "Company not found"
       });
     }
-
-    // Create Job
-    const result = await pool.query(
-      `
-      INSERT INTO jobs
-      (
-        company_id,
-        title,
-        description,
-        required_competency_ids,
-        location,
-        salary,
-        skill_thresholds
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
-      RETURNING *
-      `,
-      [
-        companyId,
-        title,
-        description,
-        JSON.stringify(requiredCompetencyIds),
-        location,
-        salary,
-        JSON.stringify(skillThresholds)
-      ]
-    );
-
-    const job = result.rows[0];
 
     // Create job and assessment link in a single transaction
     const job = await pool.withTransaction(async (client) => {

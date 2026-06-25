@@ -2,6 +2,7 @@ const express = require("express");
 
 const router = express.Router();
 
+const { authenticateToken } = require("../middleware/authMiddleware");
 const {
   signupCompany,
   createProfile,
@@ -9,7 +10,7 @@ const {
 } = require("../controllers/companyController");
 
 router.post("/signup", signupCompany);
-router.post("/profile", createProfile);
-router.post("/kyc", submitKYC);
+router.post("/profile", authenticateToken, createProfile);
+router.post("/kyc", authenticateToken, submitKYC);
 
 module.exports = router;

@@ -92,17 +92,18 @@ const createProfile = async (req, res) => {
   try {
 
     const {
-      companyId,
       industry,
       website,
       description,
       location
     } = req.body;
 
+    const companyId = req.user?.companyId;
+
     if (!companyId) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
-        message: "Company ID required"
+        message: "Unauthorized"
       });
     }
 
@@ -173,11 +174,12 @@ const submitKYC = async (req, res) => {
     }
 
     const {
-      companyId,
       panNumber,
       gstNumber,
       documentUrl
     } = req.body;
+
+    const companyId = req.user?.companyId;
 
     const idempotencyKey =
       req.headers["idempotency-key"];
