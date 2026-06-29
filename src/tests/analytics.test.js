@@ -2,12 +2,15 @@ jest.mock("../config/db", () => ({
   query: jest.fn()
 }));
 
-const pool = require("../config/db");
-const { getBaselineReport } = require("../services/analyticsService");
+let pool;
+let getBaselineReport;
 
 describe("Baseline report aggregation", () => {
   beforeEach(() => {
+    jest.resetModules();
     jest.resetAllMocks();
+    pool = require("../config/db");
+    ({ getBaselineReport } = require("../services/analyticsService"));
   });
 
   it("aggregates core business metrics and exposes a metric dictionary", async () => {
@@ -53,5 +56,25 @@ describe("Baseline report aggregation", () => {
         })
       ])
     );
+  });
+
+  it("reuses the cached report for repeat requests within the cache window", async () => {
+    pool.query.mockResolvedValue({
+      rows: [
+        {
+          total_companies: 5,
+          total_jobs: 12,
+          total_candidates: 34,
+          total_applications: 20,
+          applied_applications: 16,
+          rejected_threshold_applications: 4
+        }
+      ]
+    });
+
+    await getBaselineReport();
+    await getBaselineReport();
+
+    expect(pool.query).toHaveBeenCalledTimes(1);
   });
 });

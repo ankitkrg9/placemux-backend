@@ -1,5 +1,9 @@
 const pool = require("../config/db");
 
+const REPORT_CACHE_TTL_MS = 30_000;
+let cachedReport = null;
+let cachedReportExpiresAt = 0;
+
 const METRIC_DEFINITIONS = [
   {
     metric: "total_companies",
@@ -34,6 +38,12 @@ const METRIC_DEFINITIONS = [
 ];
 
 const getBaselineReport = async () => {
+  const now = Date.now();
+
+  if (cachedReport && now < cachedReportExpiresAt) {
+    return cachedReport;
+  }
+
   const result = await pool.query(
     `
     SELECT
@@ -70,12 +80,17 @@ const getBaselineReport = async () => {
     }
   ];
 
-  return {
+  const report = {
     grain: "overall",
     generatedAt: new Date().toISOString(),
     metrics,
     metricDictionary: METRIC_DEFINITIONS
   };
+
+  cachedReport = report;
+  cachedReportExpiresAt = Date.now() + REPORT_CACHE_TTL_MS;
+
+  return report;
 };
 
 const calculateRate = (numerator, denominator) => {

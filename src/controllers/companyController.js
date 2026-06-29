@@ -8,6 +8,9 @@ const {
 const {
   kycSchema
 } = require("../validators/kycValidator");
+const {
+  getCompanyRelationshipOverview
+} = require("../services/relationshipService");
 
 // ====================
 // COMPANY SIGNUP
@@ -300,8 +303,44 @@ const submitKYC = async (req, res) => {
   }
 };
 
+const getRelationshipOverview = async (req, res) => {
+  try {
+    const companyId = Number(req.params.companyId);
+
+    if (!companyId) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid company id is required"
+      });
+    }
+
+    const overview = await getCompanyRelationshipOverview(companyId);
+
+    if (!overview) {
+      return res.status(404).json({
+        success: false,
+        message: "Company not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      company: overview
+    });
+  } catch (error) {
+    console.error(error);
+    const dbError = pool.mapDbError(error);
+
+    res.status(dbError.status).json({
+      success: false,
+      message: dbError.message
+    });
+  }
+};
+
 module.exports = {
   signupCompany,
   createProfile,
-  submitKYC
+  submitKYC,
+  getRelationshipOverview
 };
