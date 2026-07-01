@@ -14,6 +14,7 @@ const applicationRoutes = require("./routes/applicationRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
 const { initializeSchema } = require("./config/schema");
 const { initializeSocket } = require("./socket/socketManager");
+const { initializeBackgroundWorker } = require("./services/backgroundQueue");
 
 const app = express();
 const server = http.createServer(app);
@@ -55,5 +56,9 @@ app.get("/", (req, res) => {
 });
 
 initializeSocket(server);
+
+if (process.env.NODE_ENV !== "test") {
+  initializeBackgroundWorker();
+}
 
 module.exports = { app, server };

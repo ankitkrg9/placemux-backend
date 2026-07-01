@@ -1,12 +1,19 @@
-const { getBaselineReport } = require("../services/analyticsService");
+const { getBaselineReport, getCacheStats } = require("../services/analyticsService");
 
 const getBaselineReportHandler = async (req, res) => {
   try {
     const report = await getBaselineReport();
 
+    const cacheStats = getCacheStats();
+
     res.status(200).json({
       success: true,
-      data: report
+      data: report,
+      cache: {
+        enabled: true,
+        ttlMs: 30000,
+        stats: cacheStats
+      }
     });
   } catch (error) {
     console.error(error);

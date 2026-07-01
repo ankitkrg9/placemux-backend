@@ -1,8 +1,8 @@
 const pool = require("../config/db");
+const { createCacheService, DEFAULT_TTL_MS } = require("./cacheService");
 
-const REPORT_CACHE_TTL_MS = 30_000;
-let cachedReport = null;
-let cachedReportExpiresAt = 0;
+const REPORT_CACHE_TTL_MS = DEFAULT_TTL_MS;
+const analyticsCache = createCacheService({ ttlMs: REPORT_CACHE_TTL_MS });
 
 const METRIC_DEFINITIONS = [
   {
@@ -38,59 +38,50 @@ const METRIC_DEFINITIONS = [
 ];
 
 const getBaselineReport = async () => {
-  const now = Date.now();
+  return analyticsCache.getOrSet("analytics:baseline", async () => {
+    const result = await pool.query(
+      `
+      SELECT
+        COUNT(DISTINCT c.id)::int AS total_companies,
+        COUNT(DISTINCT j.id)::int AS total_jobs,
+        COUNT(DISTINCT ca.id)::int AS total_candidates,
+        COUNT(DISTINCT a.id)::int AS total_applications,
+        COUNT(DISTINCT CASE WHEN a.status = 'APPLIED' THEN a.id END)::int AS applied_applications,
+        COUNT(DISTINCT CASE WHEN a.status = 'REJECTED_THRESHOLD' THEN a.id END)::int AS rejected_threshold_applications
+      FROM companies c
+      LEFT JOIN jobs j ON j.company_id = c.id
+      LEFT JOIN candidates ca ON TRUE
+      LEFT JOIN applications a ON TRUE
+      `,
+      []
+    );
 
-  if (cachedReport && now < cachedReportExpiresAt) {
-    return cachedReport;
-  }
+    const row = result.rows[0] || {};
 
-  const result = await pool.query(
-    `
-    SELECT
-      COUNT(DISTINCT c.id)::int AS total_companies,
-      COUNT(DISTINCT j.id)::int AS total_jobs,
-      COUNT(DISTINCT ca.id)::int AS total_candidates,
-      COUNT(DISTINCT a.id)::int AS total_applications,
-      COUNT(DISTINCT CASE WHEN a.status = 'APPLIED' THEN a.id END)::int AS applied_applications,
-      COUNT(DISTINCT CASE WHEN a.status = 'REJECTED_THRESHOLD' THEN a.id END)::int AS rejected_threshold_applications
-    FROM companies c
-    LEFT JOIN jobs j ON j.company_id = c.id
-    LEFT JOIN candidates ca ON TRUE
-    LEFT JOIN applications a ON TRUE
-    `,
-    []
-  );
+    const metrics = [
+      { name: "total_companies", value: Number(row.total_companies || 0), unit: "count" },
+      { name: "total_jobs", value: Number(row.total_jobs || 0), unit: "count" },
+      { name: "total_candidates", value: Number(row.total_candidates || 0), unit: "count" },
+      { name: "total_applications", value: Number(row.total_applications || 0), unit: "count" },
+      {
+        name: "application_acceptance_rate",
+        value: calculateRate(row.applied_applications || 0, row.total_applications || 0),
+        unit: "ratio"
+      },
+      {
+        name: "rejected_threshold_rate",
+        value: calculateRate(row.rejected_threshold_applications || 0, row.total_applications || 0),
+        unit: "ratio"
+      }
+    ];
 
-  const row = result.rows[0] || {};
-
-  const metrics = [
-    { name: "total_companies", value: Number(row.total_companies || 0), unit: "count" },
-    { name: "total_jobs", value: Number(row.total_jobs || 0), unit: "count" },
-    { name: "total_candidates", value: Number(row.total_candidates || 0), unit: "count" },
-    { name: "total_applications", value: Number(row.total_applications || 0), unit: "count" },
-    {
-      name: "application_acceptance_rate",
-      value: calculateRate(row.applied_applications || 0, row.total_applications || 0),
-      unit: "ratio"
-    },
-    {
-      name: "rejected_threshold_rate",
-      value: calculateRate(row.rejected_threshold_applications || 0, row.total_applications || 0),
-      unit: "ratio"
-    }
-  ];
-
-  const report = {
-    grain: "overall",
-    generatedAt: new Date().toISOString(),
-    metrics,
-    metricDictionary: METRIC_DEFINITIONS
-  };
-
-  cachedReport = report;
-  cachedReportExpiresAt = Date.now() + REPORT_CACHE_TTL_MS;
-
-  return report;
+    return {
+      grain: "overall",
+      generatedAt: new Date().toISOString(),
+      metrics,
+      metricDictionary: METRIC_DEFINITIONS
+    };
+  }, REPORT_CACHE_TTL_MS);
 };
 
 const calculateRate = (numerator, denominator) => {
@@ -101,7 +92,10 @@ const calculateRate = (numerator, denominator) => {
   return Number((numerator / denominator).toFixed(4));
 };
 
+const getCacheStats = () => analyticsCache.getStats();
+
 module.exports = {
   getBaselineReport,
+  getCacheStats,
   METRIC_DEFINITIONS
 };

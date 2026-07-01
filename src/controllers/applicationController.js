@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { backgroundQueue } = require("../services/backgroundQueue");
 
 const {
   applicationSchema
@@ -111,10 +112,25 @@ const applyJob = async (req, res) => {
       );
     });
 
+    const backgroundJob = await backgroundQueue.enqueueJob({
+      type: "application-processing",
+      payload: {
+        applicationId: result.rows[0].id,
+        candidateId,
+        jobId
+      },
+      idempotencyKey: `application:${candidateId}:${jobId}`
+    });
+
     res.status(201).json({
       success: true,
       application: result.rows[0],
       thresholdPassed: meetsThreshold,
+      backgroundJob: {
+        id: backgroundJob.id,
+        status: backgroundJob.status,
+        type: backgroundJob.type
+      },
       message: meetsThreshold
         ? "Application submitted successfully"
         : "Candidate rejected due to skill threshold"
