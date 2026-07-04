@@ -3,7 +3,6 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
 const http = require("http");
 
 const authRoutes = require("./routes/authRoutes");
@@ -15,22 +14,23 @@ const analyticsRoutes = require("./routes/analyticsRoutes");
 const { initializeSchema } = require("./config/schema");
 const { initializeSocket } = require("./socket/socketManager");
 const { initializeBackgroundWorker } = require("./services/backgroundQueue");
+const { createRateLimiter, createCorsMiddleware, createInMemoryStore } = require("./services/rateLimitService");
 
 const app = express();
 const server = http.createServer(app);
 
-const apiLimiter = rateLimit({
+const rateLimitStore = createInMemoryStore();
+const apiLimiter = createRateLimiter({
+  store: rateLimitStore,
   windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
-  max: Number(process.env.RATE_LIMIT_MAX || 200),
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: (req) => process.env.NODE_ENV === "test",
-  handler: (req, res) => {
-    res.status(429).json({
-      success: false,
-      message: "Too many requests from this IP, please try again later"
-    });
-  }
+  maxRequests: Number(process.env.RATE_LIMIT_MAX || 200),
+  abuseThreshold: Number(process.env.RATE_LIMIT_ABUSE_THRESHOLD || 5),
+  blockDurationMs: Number(process.env.RATE_LIMIT_BLOCK_DURATION_MS || 15 * 60 * 1000),
+  keyGenerator: (req) => req.ip || req.headers["x-forwarded-for"] || "unknown"
+});
+
+const corsMiddleware = createCorsMiddleware({
+  allowedOrigins: (process.env.CORS_ALLOWED_ORIGINS || "https://app.example.com").split(",").map((origin) => origin.trim()).filter(Boolean)
 });
 
 const overloadGuard = (req, res, next) => {
@@ -62,7 +62,7 @@ const overloadGuard = (req, res, next) => {
 app.locals.pendingRequests = 0;
 
 app.use(helmet());
-app.use(cors());
+app.use(corsMiddleware);
 app.use(express.json());
 app.use(overloadGuard);
 app.use(apiLimiter);
