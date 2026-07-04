@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { invalidateAnalyticsCache } = require("../services/analyticsService");
 
 const {
   createCandidateSchema
@@ -40,6 +41,8 @@ const createCandidate = async (req, res) => {
         JSON.stringify(skills)
       ]
     );
+
+    invalidateAnalyticsCache();
 
     res.status(201).json({
       success: true,

@@ -20,19 +20,51 @@ const app = express();
 const server = http.createServer(app);
 
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
+  windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
+  max: Number(process.env.RATE_LIMIT_MAX || 200),
   standardHeaders: true,
   legacyHeaders: false,
-  message: {
-    success: false,
-    message: "Too many requests from this IP, please try again later"
+  skip: (req) => process.env.NODE_ENV === "test",
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      message: "Too many requests from this IP, please try again later"
+    });
   }
 });
+
+const overloadGuard = (req, res, next) => {
+  if (process.env.NODE_ENV === "test") {
+    return next();
+  }
+
+  const pendingRequests = app.locals.pendingRequests || 0;
+  const maxPendingRequests = Number(process.env.MAX_PENDING_REQUESTS || 200);
+
+  if (pendingRequests >= maxPendingRequests) {
+    return res.status(503).json({
+      success: false,
+      message: "Service temporarily overloaded, please retry shortly"
+    });
+  }
+
+  app.locals.pendingRequests = pendingRequests + 1;
+  res.on("finish", () => {
+    app.locals.pendingRequests = Math.max(0, (app.locals.pendingRequests || 1) - 1);
+  });
+  res.on("close", () => {
+    app.locals.pendingRequests = Math.max(0, (app.locals.pendingRequests || 1) - 1);
+  });
+
+  return next();
+};
+
+app.locals.pendingRequests = 0;
 
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+app.use(overloadGuard);
 app.use(apiLimiter);
 
 app.use("/api/auth", authRoutes);

@@ -37,4 +37,21 @@ describe("Redis-backed cache service", () => {
     expect(second).toEqual({ message: "shared" });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
+
+  it("invalidates cached entries when a related tag is invalidated", async () => {
+    const cache = createCacheService({ ttlMs: 1000 });
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce({ message: "first" })
+      .mockResolvedValueOnce({ message: "second" });
+
+    const first = await cache.getOrSet("analytics:baseline", fetcher, 1000, { tags: ["analytics:reports"] });
+    expect(first).toEqual({ message: "first" });
+
+    cache.invalidateByTag("analytics:reports");
+
+    const second = await cache.getOrSet("analytics:baseline", fetcher, 1000, { tags: ["analytics:reports"] });
+
+    expect(second).toEqual({ message: "second" });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
 });

@@ -17,6 +17,12 @@ The baseline report endpoint was recomputing the same aggregate metrics on every
 - Test command: `npm test -- --runInBand`
 - Result: 4/4 test suites passed and 10/10 tests passed.
 
+### Cache invalidation behavior
+
+- The analytics baseline report is cached for up to 30 seconds by default.
+- Writes that affect the underlying analytics dataset (company signup, company profile creation, KYC submission, candidate creation, job creation, and application submission) now proactively invalidate the cached report.
+- This keeps the cache fresh on the write path while still allowing bounded staleness during read-only traffic.
+
 ### Expected impact
 
 - Repeated reads of the same report should avoid the database round-trip after the first request until the cache expires.

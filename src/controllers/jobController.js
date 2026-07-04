@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { invalidateAnalyticsCache } = require("../services/analyticsService");
 
 const {
   createJobSchema
@@ -92,6 +93,8 @@ const createJob = async (req, res) => {
       createdJob.assessment_link = assessmentLink;
       return createdJob;
     });
+
+    invalidateAnalyticsCache();
 
     res.status(201).json({
       success: true,

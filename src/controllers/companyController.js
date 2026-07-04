@@ -11,6 +11,7 @@ const {
 const {
   getCompanyRelationshipOverview
 } = require("../services/relationshipService");
+const { invalidateAnalyticsCache } = require("../services/analyticsService");
 
 // ====================
 // COMPANY SIGNUP
@@ -71,6 +72,7 @@ const signupCompany = async (req, res) => {
     const company = result.rows[0];
 
     delete company.password_hash;
+    invalidateAnalyticsCache();
 
     res.status(201).json({
       success: true,
@@ -143,6 +145,8 @@ const createProfile = async (req, res) => {
         location
       ]
     );
+
+    invalidateAnalyticsCache();
 
     res.status(201).json({
       success: true,

@@ -19,6 +19,13 @@ class BackgroundQueue {
       return this.idempotencyIndex.get(idempotencyKey);
     }
 
+    const maxQueueDepth = Number(process.env.BACKGROUND_QUEUE_MAX || 500);
+    if (this.jobs.length >= maxQueueDepth) {
+      const error = new Error("Background queue is at capacity");
+      error.status = 503;
+      throw error;
+    }
+
     const job = {
       id: this.jobs.length + 1,
       type,
@@ -120,9 +127,9 @@ let isWorkerRunning = false;
 
 const initializeBackgroundWorker = ({
   processor = createApplicationJobProcessor(),
-  intervalMs = 1500,
-  maxAttempts = 3,
-  retryDelayMs = 500
+  intervalMs = Number(process.env.BACKGROUND_WORKER_INTERVAL_MS || 1500),
+  maxAttempts = Number(process.env.BACKGROUND_WORKER_MAX_ATTEMPTS || 3),
+  retryDelayMs = Number(process.env.BACKGROUND_WORKER_RETRY_DELAY_MS || 500)
 } = {}) => {
   if (workerTimer) {
     return backgroundQueue;

@@ -1,5 +1,6 @@
 const pool = require("../config/db");
 const { backgroundQueue } = require("../services/backgroundQueue");
+const { invalidateAnalyticsCache } = require("../services/analyticsService");
 
 const {
   applicationSchema
@@ -121,6 +122,8 @@ const applyJob = async (req, res) => {
       },
       idempotencyKey: `application:${candidateId}:${jobId}`
     });
+
+    invalidateAnalyticsCache();
 
     res.status(201).json({
       success: true,

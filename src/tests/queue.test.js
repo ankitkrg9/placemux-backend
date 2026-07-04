@@ -72,4 +72,22 @@ describe("Background queue", () => {
     expect(stats.failed).toBe(1);
     expect(processor).toHaveBeenCalledTimes(2);
   });
+
+  it("rejects new jobs when the queue is saturated", async () => {
+    const queue = createBackgroundQueue();
+
+    for (let index = 0; index < 500; index += 1) {
+      await queue.enqueueJob({
+        type: "application-notification",
+        payload: { applicationId: index },
+        idempotencyKey: `job-${index}`
+      });
+    }
+
+    await expect(queue.enqueueJob({
+      type: "application-notification",
+      payload: { applicationId: 501 },
+      idempotencyKey: "job-501"
+    })).rejects.toThrow("Background queue is at capacity");
+  });
 });

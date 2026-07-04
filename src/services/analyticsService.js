@@ -81,7 +81,9 @@ const getBaselineReport = async () => {
       metrics,
       metricDictionary: METRIC_DEFINITIONS
     };
-  }, REPORT_CACHE_TTL_MS);
+  }, REPORT_CACHE_TTL_MS, {
+    tags: ["analytics:reports"]
+  });
 };
 
 const calculateRate = (numerator, denominator) => {
@@ -94,8 +96,11 @@ const calculateRate = (numerator, denominator) => {
 
 const getCacheStats = () => analyticsCache.getStats();
 
+const invalidateAnalyticsCache = () => analyticsCache.invalidateByTag("analytics:reports");
+
 module.exports = {
   getBaselineReport,
   getCacheStats,
+  invalidateAnalyticsCache,
   METRIC_DEFINITIONS
 };
