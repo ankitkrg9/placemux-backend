@@ -25,5 +25,18 @@ The baseline report endpoint was recomputing the same aggregate metrics on every
 
 ### Expected impact
 
+## Load testing workflow
+
+- Run the API locally before benchmarking, for example with `npm start`.
+- Execute the synthetic load test with `npm run load:test`.
+- Use `LOAD_TEST_CONCURRENCY`, `LOAD_TEST_TOTAL_REQUESTS`, and `LOAD_TEST_URL` to tune the scenario.
+- Review the reported success rate, average latency, and p95/p99 latency for capacity planning.
+
+### Load-test example
+
+```bash
+LOAD_TEST_URL=http://127.0.0.1:3000/health LOAD_TEST_CONCURRENCY=20 LOAD_TEST_TOTAL_REQUESTS=200 npm run load:test
+```
+
 - Repeated reads of the same report should avoid the database round-trip after the first request until the cache expires.
 - This reduces latency for hot, repeated requests and lowers unnecessary load on the database.
