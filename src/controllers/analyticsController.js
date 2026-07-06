@@ -1,10 +1,11 @@
-const { getBaselineReport, getCacheStats } = require("../services/analyticsService");
+const { getBaselineReport, getCacheStats, getWorkerPoolStats } = require("../services/analyticsService");
 
 const getBaselineReportHandler = async (req, res) => {
   try {
     const report = await getBaselineReport();
 
     const cacheStats = getCacheStats();
+    const workerPoolStats = getWorkerPoolStats();
 
     res.status(200).json({
       success: true,
@@ -13,7 +14,8 @@ const getBaselineReportHandler = async (req, res) => {
         enabled: true,
         ttlMs: 30000,
         stats: cacheStats
-      }
+      },
+      workers: workerPoolStats
     });
   } catch (error) {
     console.error(error);

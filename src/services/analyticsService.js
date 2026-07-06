@@ -1,8 +1,10 @@
 const pool = require("../config/db");
 const { createCacheService, DEFAULT_TTL_MS } = require("./cacheService");
+const { createWorkerPool } = require("./workerPool");
 
 const REPORT_CACHE_TTL_MS = DEFAULT_TTL_MS;
 const analyticsCache = createCacheService({ ttlMs: REPORT_CACHE_TTL_MS });
+const workerPool = createWorkerPool({ size: Number(process.env.WORKER_POOL_SIZE || 2) });
 
 const METRIC_DEFINITIONS = [
   {
@@ -75,11 +77,22 @@ const getBaselineReport = async () => {
       }
     ];
 
+    const cpuIntensiveResult = await workerPool.enqueue({
+      payload: {
+        values: metrics.map((metric) => Number(metric.value) || 0),
+        iterations: 8
+      }
+    });
+
     return {
       grain: "overall",
       generatedAt: new Date().toISOString(),
       metrics,
-      metricDictionary: METRIC_DEFINITIONS
+      metricDictionary: METRIC_DEFINITIONS,
+      workerComputation: {
+        processed: true,
+        checksum: cpuIntensiveResult
+      }
     };
   }, REPORT_CACHE_TTL_MS, {
     tags: ["analytics:reports"]
@@ -96,11 +109,18 @@ const calculateRate = (numerator, denominator) => {
 
 const getCacheStats = () => analyticsCache.getStats();
 
+const getWorkerPoolStats = () => ({
+  size: workerPool.size,
+  availableWorkers: workerPool.availableWorkers?.length || 0,
+  queuedTasks: workerPool.taskQueue?.length || 0
+});
+
 const invalidateAnalyticsCache = () => analyticsCache.invalidateByTag("analytics:reports");
 
 module.exports = {
   getBaselineReport,
   getCacheStats,
+  getWorkerPoolStats,
   invalidateAnalyticsCache,
   METRIC_DEFINITIONS
 };
