@@ -19,6 +19,27 @@ const { createRateLimiter, createCorsMiddleware, createInMemoryStore } = require
 const app = express();
 const server = http.createServer(app);
 
+const validateProductionConfig = () => {
+  if (process.env.NODE_ENV !== "production") {
+    return;
+  }
+
+  const required = [
+    "JWT_SECRET",
+    "DB_HOST",
+    "DB_PORT",
+    "DB_USER",
+    "DB_PASSWORD",
+    "DB_NAME"
+  ];
+
+  const missing = required.filter((key) => !process.env[key]);
+
+  if (missing.length > 0) {
+    throw new Error(`Missing required production configuration: ${missing.join(", ")}`);
+  }
+};
+
 const rateLimitStore = createInMemoryStore();
 const apiLimiter = createRateLimiter({
   store: rateLimitStore,
@@ -61,6 +82,16 @@ const overloadGuard = (req, res, next) => {
 
 app.locals.pendingRequests = 0;
 
+if (process.env.NODE_ENV === "production") {
+  app.use((req, res, next) => {
+    const blockedPaths = ["/debug", "/dev", "/_debug", "/test"];
+    if (blockedPaths.some((prefix) => req.path.startsWith(prefix))) {
+      return res.status(404).json({ success: false, message: "Request failed" });
+    }
+    return next();
+  });
+}
+
 app.use(helmet());
 app.use(corsMiddleware);
 app.use(express.json());
@@ -79,7 +110,7 @@ app.get("/health", async (req, res) => {
     await initializeSchema();
     res.json({ success: true, message: "Schema ready" });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Request failed" });
   }
 });
 
@@ -87,10 +118,32 @@ app.get("/", (req, res) => {
   res.send("PlaceMux API Running");
 });
 
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: process.env.NODE_ENV === "production" ? "Request failed" : "Not found"
+  });
+});
+
+app.use((error, req, res, next) => {
+  console.error(error);
+
+  const status = error.status || error.statusCode || 500;
+  const message = process.env.NODE_ENV === "production"
+    ? "Request failed"
+    : (error.message || "Internal server error");
+
+  res.status(status).json({
+    success: false,
+    message
+  });
+});
+
+validateProductionConfig();
 initializeSocket(server);
 
 if (process.env.NODE_ENV !== "test") {
   initializeBackgroundWorker();
 }
 
-module.exports = { app, server };
+module.exports = { app, server, validateProductionConfig };

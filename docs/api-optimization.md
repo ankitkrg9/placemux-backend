@@ -25,6 +25,12 @@ The baseline report endpoint was recomputing the same aggregate metrics on every
 
 ### Expected impact
 
+## Production route locking
+
+- Sensitive API routes require authentication.
+- Production environments block debug-style paths and return sanitized error responses.
+- Startup validates required production configuration before serving traffic.
+
 ## Load testing workflow
 
 - Run the API locally before benchmarking, for example with `npm start`.
