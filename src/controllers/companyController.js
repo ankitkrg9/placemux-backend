@@ -51,33 +51,47 @@ const signupCompany = async (req, res) => {
     const hashedPassword =
       await bcrypt.hash(password, 10);
 
-    const result = await pool.query(
-      `
-      INSERT INTO companies
-      (
-        company_name,
-        email,
-        password_hash
-      )
-      VALUES ($1,$2,$3)
-      RETURNING *
-      `,
-      [
-        companyName,
-        email,
-        hashedPassword
-      ]
-    );
+    // Create company inside a transaction and write signup outbox event
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const insertRes = await client.query(
+        `
+        INSERT INTO companies
+        (
+          company_name,
+          email,
+          password_hash
+        )
+        VALUES ($1,$2,$3)
+        RETURNING *
+        `,
+        [companyName, email, hashedPassword]
+      );
 
-    const company = result.rows[0];
+      const company = insertRes.rows[0];
 
-    delete company.password_hash;
-    invalidateAnalyticsCache();
+      await client.query(
+        `
+        INSERT INTO outbox
+        (aggregate_type, aggregate_id, event_type, payload)
+        VALUES ($1,$2,$3,$4)
+        `,
+        ["company", company.id, "company.signed_up.v1", JSON.stringify({ companyId: company.id, email: company.email })]
+      );
 
-    res.status(201).json({
-      success: true,
-      company
-    });
+      await client.query("COMMIT");
+
+      delete company.password_hash;
+      invalidateAnalyticsCache();
+
+      res.status(201).json({ success: true, company });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
 
   } catch (error) {
     console.error(error);
@@ -342,9 +356,40 @@ const getRelationshipOverview = async (req, res) => {
   }
 };
 
+const activateCompany = async (req, res) => {
+  try {
+    const companyId = Number(req.body.companyId || req.params.companyId);
+
+    if (!companyId) {
+      return res.status(400).json({ success: false, message: "companyId required" });
+    }
+
+    const result = await pool.query(
+      `UPDATE companies SET activated = true WHERE id = $1 RETURNING *`,
+      [companyId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Company not found" });
+    }
+
+    await pool.query(
+      `INSERT INTO outbox (aggregate_type, aggregate_id, event_type, payload) VALUES ($1,$2,$3,$4)`,
+      ["company", companyId, "company.activated.v1", JSON.stringify({ companyId })]
+    );
+
+    res.status(200).json({ success: true, company: result.rows[0] });
+  } catch (error) {
+    console.error(error);
+    const dbError = pool.mapDbError ? pool.mapDbError(error) : { status: 500, message: error.message };
+    res.status(dbError.status).json({ success: false, message: dbError.message });
+  }
+};
+
 module.exports = {
   signupCompany,
   createProfile,
   submitKYC,
-  getRelationshipOverview
+  getRelationshipOverview,
+  activateCompany
 };

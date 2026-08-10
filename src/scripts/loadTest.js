@@ -1,3 +1,34 @@
+const autocannon = require("autocannon");
+
+const target = process.env.LOAD_TEST_TARGET || "http://localhost:3000/api/payments/initiate";
+const connections = Number(process.env.LOAD_TEST_CONNECTIONS || 50);
+const duration = Number(process.env.LOAD_TEST_DURATION || 15);
+
+console.log(`Running load test against ${target} with ${connections} connections for ${duration}s`);
+
+autocannon(
+  {
+    url: target,
+    connections,
+    duration,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": `loadtest-${Date.now()}`
+    },
+    body: JSON.stringify({ referenceId: `loadtest-${Date.now()}`, amount: 100, currency: "INR" })
+  },
+  (err, result) => {
+    if (err) {
+      console.error("Load test failed", err);
+      process.exit(1);
+    }
+
+    console.log("Load test complete");
+    console.log(result);
+    process.exit(0);
+  }
+);
 const http = require("http");
 
 const mode = (process.env.LOAD_TEST_MODE || "load").toLowerCase();

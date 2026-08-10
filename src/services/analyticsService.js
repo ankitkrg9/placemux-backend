@@ -4,7 +4,14 @@ const { createWorkerPool } = require("./workerPool");
 
 const REPORT_CACHE_TTL_MS = DEFAULT_TTL_MS;
 const analyticsCache = createCacheService({ ttlMs: REPORT_CACHE_TTL_MS });
-const workerPool = createWorkerPool({ size: Number(process.env.WORKER_POOL_SIZE || 2) });
+let workerPool;
+
+const getWorkerPool = () => {
+  if (!workerPool) {
+    workerPool = createWorkerPool({ size: Number(process.env.WORKER_POOL_SIZE || 2) });
+  }
+  return workerPool;
+};
 
 const METRIC_DEFINITIONS = [
   {
@@ -77,7 +84,7 @@ const getBaselineReport = async () => {
       }
     ];
 
-    const cpuIntensiveResult = await workerPool.enqueue({
+    const cpuIntensiveResult = await getWorkerPool().enqueue({
       payload: {
         values: metrics.map((metric) => Number(metric.value) || 0),
         iterations: 8
@@ -109,18 +116,28 @@ const calculateRate = (numerator, denominator) => {
 
 const getCacheStats = () => analyticsCache.getStats();
 
-const getWorkerPoolStats = () => ({
-  size: workerPool.size,
-  availableWorkers: workerPool.availableWorkers?.length || 0,
-  queuedTasks: workerPool.taskQueue?.length || 0
-});
+const getWorkerPoolStats = () => {
+  const pool = workerPool || { size: 0, availableWorkers: [], taskQueue: [] };
+  return {
+    size: pool.size,
+    availableWorkers: pool.availableWorkers?.length || 0,
+    queuedTasks: pool.taskQueue?.length || 0
+  };
+};
 
 const invalidateAnalyticsCache = () => analyticsCache.invalidateByTag("analytics:reports");
+
+const shutdownAnalyticsService = async () => {
+  if (workerPool && typeof workerPool.terminate === "function") {
+    await workerPool.terminate();
+  }
+};
 
 module.exports = {
   getBaselineReport,
   getCacheStats,
   getWorkerPoolStats,
   invalidateAnalyticsCache,
+  shutdownAnalyticsService,
   METRIC_DEFINITIONS
 };
